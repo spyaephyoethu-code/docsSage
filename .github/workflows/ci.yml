@@ -27,10 +27,8 @@ jobs:
       - name: Install dependencies
         run: |
           pip install --upgrade pip
-          pip install ruff mypy
-          # Install project deps if requirements file exists
+          pip install ruff mypy pydantic[mypy]
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
 
       - name: Lint (ruff)
         run: ruff check .

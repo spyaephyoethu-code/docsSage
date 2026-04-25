@@ -37,7 +37,41 @@ A RAG-powered chatbot. Users create "knowledge bases" by ingesting docs (GitHub 
 8. Parse citations, persist message with latency + cost metadata
 
 ## Backend file layout
-See `backend/` — services are intentionally swappable (Pinecone → Qdrant, Groq → OpenAI, etc.) without touching routes.
+
+The backend follows a strict layered architecture. Data flows top-down only — `api` → `domain` → `infrastructure`. No layer imports from a layer above it.
+
+```
+backend/app/
+├── api/                          # HTTP layer only
+│   ├── controllers/              # parse request, call service, map domain exceptions → HTTP errors
+│   ├── routers/                  # FastAPI route registration only — no logic
+│   └── validators/               # FastAPI dependencies for request-level checks (file size, content-type, etc.)
+│
+├── domain/                       # Business logic — no HTTP, no DB imports
+│   ├── exceptions.py             # KBNotFound, KBLimitExceeded, BudgetExceeded, …
+│   ├── schemas/                  # Pydantic request/response models shared across layers
+│   └── services/                 # Orchestration: quota enforcement, calling repositories
+│
+├── infrastructure/               # All external I/O — swappable without touching other layers
+│   ├── db/
+│   │   ├── models.py             # SQLAlchemy ORM models
+│   │   └── repositories/        # One repository class per domain entity (raw DB queries only)
+│   ├── vector_store/             # Pinecone client (→ Qdrant swap here)
+│   ├── llm/                      # Groq client (→ OpenAI swap here)
+│   ├── embeddings/               # Voyage AI client
+│   ├── reranker/                 # Cohere client (with no-rerank fallback)
+│   ├── storage/                  # Supabase Storage (BM25 snapshots, PDFs)
+│   └── cache/                    # Query / retrieval / embedding caches
+│
+└── core/                         # Cross-cutting — imported by all layers
+    ├── config.py                 # pydantic-settings (reads .env)
+    ├── database.py               # async SQLAlchemy engine + session + migrations runner
+    ├── quotas.py                 # quota constants read from settings
+    ├── circuit_breaker.py        # daily budget guards for Groq / Voyage / Cohere
+    └── middleware/
+        └── auth.py               # JWT decode + get_current_user dependency
+```
+
 
 ## Data model (Postgres)
 - `users`, `knowledge_bases`, `sources`, `chunks_metadata`, `conversations`, `messages`, `eval_runs`
@@ -45,7 +79,7 @@ See `backend/` — services are intentionally swappable (Pinecone → Qdrant, Gr
 
 ## Free-tier constraints (this is a portfolio project — no paid spend)
 
-### Per-user hard limits (enforce in `quotas.py`)
+### Per-user hard limits (enforce in `core/quotas.py`)
 - Max 3 KBs per user
 - Max 5 sources per KB
 - Max 10MB per PDF upload
@@ -55,7 +89,7 @@ See `backend/` — services are intentionally swappable (Pinecone → Qdrant, Gr
 - Max 20 chat messages per user per day
 - Max 5 ingestions per user per day
 
-### Global circuit breakers (enforce in `circuit_breaker.py`)
+### Global circuit breakers (enforce in `core/circuit_breaker.py`)
 - Daily Groq token budget — when hit, return friendly "service paused" message
 - Daily Voyage token budget — pause new ingestions
 - Daily Cohere call budget — fall back to no-rerank mode automatically (do not error)
