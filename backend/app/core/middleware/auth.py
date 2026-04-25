@@ -10,13 +10,16 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.infrastructure.db.models import User
 
+_jwks_client = jwt.PyJWKClient(f"{settings.supabase_url}/auth/v1/.well-known/jwks.json")
+
 
 def _decode_jwt(token: str) -> dict:
     try:
+        signing_key = _jwks_client.get_signing_key_from_jwt(token)
         return jwt.decode(
             token,
-            settings.supabase_jwt_secret,
-            algorithms=["HS256"],
+            signing_key.key,
+            algorithms=["ES256", "RS256", "HS256"],
             audience="authenticated",
         )
     except jwt.ExpiredSignatureError:
