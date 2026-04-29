@@ -1,0 +1,2 @@
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS chunking_strategy VARCHAR(50);
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS error_message TEXT;

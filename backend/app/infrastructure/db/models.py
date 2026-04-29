@@ -66,7 +66,9 @@ class Source(Base):
     url_or_path: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending")
     chunk_count: Mapped[int | None] = mapped_column(Integer)
+    chunking_strategy: Mapped[str | None] = mapped_column(String(50))
     ingested_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    error_message: Mapped[str | None] = mapped_column(Text)
 
     knowledge_base: Mapped["KnowledgeBase"] = relationship(back_populates="sources")
     chunks: Mapped[list["ChunkMetadata"]] = relationship(back_populates="source")

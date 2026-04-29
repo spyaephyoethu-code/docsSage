@@ -112,6 +112,50 @@ backend/app/
 - Auto-refresh of website sources (one-shot ingest only)
 - **Clerk** — skipped entirely; Supabase Auth covers all auth needs (email/password, OAuth, JWTs, RLS) without a second vendor or extra cost
 
+## Code conventions
+
+### Import separation
+Split imports into two labelled blocks everywhere — runtime imports first, type-hint imports second:
+```python
+# runtime imports
+from app.core.dependencies import get_kb_service
+from app.domain.exceptions import KBNotFound
+
+# type-hint imports
+from app.domain.services.kb_service import KBService
+from app.infrastructure.db.models import KnowledgeBase
+```
+- **Runtime:** anything the function/class body actually calls, instantiates, or raises
+- **Type-hint:** classes used only as annotations; never constructed in this file
+
+## Frontend to-do: surface limits to users
+
+Show limits inline so users understand constraints before hitting a 429 error.
+
+### KB list page
+- Show "X / 3 knowledge bases used" near the "Create KB" button
+- Disable the button and show a tooltip ("You've reached the 3 KB limit") when at limit
+
+### Source list page (inside a KB)
+- Show "X / 5 sources" near the "Add Source" button
+- Disable the button with tooltip when at limit
+- Show ingestion status badge per source: `pending` (spinner) → `running` (spinner) → `completed` (green) / `failed` (red)
+- Poll `GET /kbs/{kb_id}/sources/{source_id}` every 2s while status is `pending` or `running`; stop polling on `completed` or `failed`
+- On `failed`: show a retry affordance (re-POST the same source)
+
+### Add Source form
+- Web: note "up to 50 pages crawled"
+- GitHub: note "repos under 100MB only"
+- PDF: note "max 10MB"
+
+### Chat page
+- Show "X / 20 messages today" somewhere visible (e.g., input footer)
+- Disable input and show "Daily limit reached — resets at midnight UTC" when at 20
+
+### General
+- Map 429 responses from the API to user-friendly inline messages, not browser alerts
+- Map circuit-breaker 503 responses ("service paused") to a banner at the top of the page
+
 ## Setup decisions log (Phase 0)
 - **Auth:** Supabase Auth only — Clerk was listed in original plan but dropped; no Clerk account, no Clerk SDK
 - **Pinecone index config:** dimension `512` (voyage-3-lite), metric `cosine`, serverless region `us-east-1-aws`

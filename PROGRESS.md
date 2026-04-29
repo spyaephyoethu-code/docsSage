@@ -43,6 +43,33 @@
 - `backend/.env` created (local copy with real keys); `SUPABASE_JWT_SECRET` added to `.env.example` and `.env`
 - ruff: all checks pass; mypy: no issues (12 source files)
 
+---
+
+## Phase 2 — Ingestion pipeline (IN PROGRESS)
+
+### What was done
+- **4 loaders:** GitHub (gitpython, depth=1 clone), PDF (PyMuPDF page-by-page), Web (trafilatura + httpx crawler up to 50 pages), plain Text, Word (.docx via python-docx)
+- **3 chunkers:** Fixed (512 tokens, 50 overlap via tiktoken), Markdown (header-first recursive), Semantic (sentence-boundary grouping by paragraph)
+- Chunking strategy auto-selected per source type — not user-configurable (github→markdown, pdf→fixed, web→semantic, text→fixed, word→semantic)
+- **Voyage embedder:** httpx-based, batches of 128, exponential backoff retry on 429
+- **Pinecone client:** upsert with metadata (kb_id, source_id, user_id, chunk_text), delete by source
+- **Sources API:** `POST /api/v1/knowledge-bases/{kb_id}/sources` (202, triggers BackgroundTask), `GET .../sources`, `GET .../sources/{id}` (poll status)
+- Ingestion status lifecycle: `pending → running → completed / failed`
+- Deduplication: exact-match within a source before embedding; chunks under 50 tokens dropped
+- Migration `008` adds `chunking_strategy` column to `sources` table
+
+### Source type decision
+Notion was dropped in favour of plain text and Word (.docx):
+- Notion requires users to export a ZIP and host it somewhere — too many steps for a portfolio project
+- Plain text and Word cover far more real-world documentation (specs, runbooks, internal docs)
+- Excel was considered but skipped — tabular data doesn't chunk into meaningful prose for RAG
+
+### Outstanding
+- Install new deps: `pip install -r requirements.txt`
+- End-to-end test: POST a GitHub URL → poll until `completed` → verify chunk count in logs
+
+---
+
 ### Outstanding before Railway deploy
 - Fill in `SUPABASE_JWT_SECRET` in `backend/.env` — get from Supabase Dashboard → Settings → API → JWT Secret
 - Run `migrations/001_initial_schema.sql` in Supabase SQL editor once (the trigger on `auth.users` must be created there, not via asyncpg)
