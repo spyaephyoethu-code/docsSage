@@ -39,7 +39,9 @@ class SourceRepository:
 
     async def list_by_kb(self, kb_id: uuid.UUID) -> list[Source]:
         result = await self._db.execute(
-            select(Source).where(Source.kb_id == kb_id).order_by(Source.ingested_at.desc())
+            select(Source)
+            .where(Source.kb_id == kb_id)
+            .order_by(Source.ingested_at.desc())
         )
         return list(result.scalars().all())
 
@@ -80,7 +82,10 @@ class SourceRepository:
         result = await self._db.execute(
             update(Source)
             .where(Source.status == "running")
-            .values(status="failed", error_message="Server restarted during ingestion — please retry")
+            .values(
+                status="failed",
+                error_message="Server restarted during ingestion — please retry",
+            )
             .returning(Source.id)
         )
         await self._db.commit()

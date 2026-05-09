@@ -36,6 +36,14 @@ class ChunkRepository:
                 ChunkMetadata.pinecone_id.is_not(None),
             )
         )
+        return [r for r in result.scalars().all() if r is not None]
+
+    async def get_all_by_kb(self, kb_id: uuid.UUID) -> list[ChunkMetadata]:
+        result = await self._db.execute(
+            select(ChunkMetadata)
+            .join(Source, ChunkMetadata.source_id == Source.id)
+            .where(Source.kb_id == kb_id, Source.status == "completed")
+        )
         return list(result.scalars().all())
 
     async def get_pinecone_ids_by_kb(self, kb_id: uuid.UUID) -> list[str]:
@@ -47,4 +55,4 @@ class ChunkRepository:
                 ChunkMetadata.pinecone_id.is_not(None),
             )
         )
-        return list(result.scalars().all())
+        return [r for r in result.scalars().all() if r is not None]

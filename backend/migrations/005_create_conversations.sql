@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS conversations (
     kb_id      UUID NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     title      TEXT,
+    summary    TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

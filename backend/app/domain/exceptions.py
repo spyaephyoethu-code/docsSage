@@ -28,3 +28,7 @@ class DailyLimitExceeded(DocsSageError):
 
 class BudgetExceeded(DocsSageError):
     pass
+
+
+class ConversationNotFound(DocsSageError):
+    pass

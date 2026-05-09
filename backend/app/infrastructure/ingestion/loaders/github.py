@@ -11,10 +11,34 @@ from app.infrastructure.ingestion.loaders.base import BaseLoader
 logger = logging.getLogger(__name__)
 
 _TEXT_EXTENSIONS = {
-    ".py", ".js", ".ts", ".jsx", ".tsx", ".md", ".rst", ".txt",
-    ".yaml", ".yml", ".json", ".html", ".css", ".java", ".go",
-    ".rb", ".php", ".cpp", ".c", ".h", ".rs", ".swift", ".kt",
-    ".toml", ".ini", ".cfg", ".sh", ".bash",
+    ".py",
+    ".js",
+    ".ts",
+    ".jsx",
+    ".tsx",
+    ".md",
+    ".rst",
+    ".txt",
+    ".yaml",
+    ".yml",
+    ".json",
+    ".html",
+    ".css",
+    ".java",
+    ".go",
+    ".rb",
+    ".php",
+    ".cpp",
+    ".c",
+    ".h",
+    ".rs",
+    ".swift",
+    ".kt",
+    ".toml",
+    ".ini",
+    ".cfg",
+    ".sh",
+    ".bash",
 }
 _MAX_FILE_BYTES = 1 * 1024 * 1024  # 1 MB per file
 _MAX_REPO_MB = 100

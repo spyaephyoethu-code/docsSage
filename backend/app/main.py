@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import AsyncSessionLocal, run_migrations
 from app.infrastructure.db.repositories.source_repository import SourceRepository
-from app.api.routers import health, knowledge_bases, sources
+from app.api.routers import chat, health, knowledge_bases, sources
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     async with AsyncSessionLocal() as db:
         count = await SourceRepository(db).reset_stale_running()
         if count:
-            logger.warning(f"Reset {count} stale 'running' source(s) to 'failed' on startup")
+            logger.warning(
+                f"Reset {count} stale 'running' source(s) to 'failed' on startup"
+            )
     yield
 
 
@@ -37,3 +39,4 @@ app.add_middleware(
 app.include_router(health.router)
 app.include_router(knowledge_bases.router)
 app.include_router(sources.router)
+app.include_router(chat.router)

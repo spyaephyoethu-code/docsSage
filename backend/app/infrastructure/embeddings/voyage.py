@@ -23,7 +23,9 @@ class VoyageEmbedder:
             all_embeddings.extend(embeddings)
         return all_embeddings
 
-    async def _embed_with_retry(self, texts: list[str], max_retries: int = 3) -> list[list[float]]:
+    async def _embed_with_retry(
+        self, texts: list[str], max_retries: int = 3
+    ) -> list[list[float]]:
         headers = {
             "Authorization": f"Bearer {settings.voyage_api_key}",
             "Content-Type": "application/json",

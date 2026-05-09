@@ -22,9 +22,10 @@ A RAG-powered chatbot. Users create "knowledge bases" by ingesting docs (GitHub 
 - `chunks_metadata` table in Postgres stores chunk text to serve citations without round-tripping Pinecone
 - Chunking strategy is chosen by the developer per source type (not user-configurable): fixed-size (512 tokens, 50 overlap) as baseline, semantic (`SemanticSplitterNodeParser`) for prose, recursive markdown-aware (headers first, then paragraphs) for structured/API docs — strategy tracked per source in `sources` table for eval comparison
 - BM25 index is in-memory (`rank_bm25`), rebuilt lazily per-KB on first query from `chunks_metadata`, RRF k=60
-- Query rewriting: if conversational follow-up detected, rewrite standalone question using Groq (8B) + last 5 turns before retrieval
+- Query rewriting: if conversational follow-up detected, rewrite standalone question using Groq (8B) + conversation summary (if exists) + last 5 turns before retrieval
+- Conversation summary: once a conversation exceeds 10 messages, all messages except the last 5 are summarised by Groq 8B and stored in `conversations.summary`; LLM context = summary + last 5 messages at all times
 - BM25 snapshots persisted to Supabase Storage (not S3)
-- Pinecone vector metadata schema: `{kb_id, source_id, source_type, chunk_text, page_num?, url?}`
+- Pinecone vector metadata schema: `{kb_id, source_id, source_type, chunk_text, page_num?, url?, source_title?}`
 
 ## RAG pipeline (query time)
 1. Rewrite query using conversation history if needed
@@ -34,7 +35,7 @@ A RAG-powered chatbot. Users create "knowledge bases" by ingesting docs (GitHub 
 5. Cohere Rerank → top-5
 6. Build prompt with chunks + citation format (`[1]`, `[2]`...)
 7. Stream Groq response via SSE
-8. Parse citations, persist message with latency + cost metadata
+8. Parse citations (`[1]`, `[2]`...), attach `source_name` (file path for GitHub, filename for PDF/Word/Text) and `source_url` (web/GitHub), persist message with latency + cost metadata
 
 ## Backend file layout
 
@@ -104,7 +105,7 @@ backend/app/
 - Skip chunks under 50 tokens
 
 ### Explicitly cut features — do not implement these
-- Multi-turn conversation memory beyond last 5 messages
+- Unlimited multi-turn memory — context is capped at summary + last 5 messages
 - Re-embedding when chunking strategy changes
 - KB sharing between users
 - Webhooks for ingestion completion — use polling every 2s instead
