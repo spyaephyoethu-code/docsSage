@@ -10,7 +10,7 @@ from app.domain.exceptions import (
     ConversationNotFound,
     DailyLimitExceeded,
 )
-from app.domain.schemas.chat import ChatResponse
+from app.domain.schemas.chat import ChatResponse, StreamDoneEvent, StreamErrorEvent, StreamTokenEvent
 from app.domain.utils.citation import parse_citations
 
 # type-hint imports
@@ -156,6 +156,119 @@ class ChatService:
             latency_ms=latency_ms,
             cost_usd=total_cost,
         )
+
+    async def chat_stream(
+        self,
+        kb_id: uuid.UUID,
+        user_id: uuid.UUID,
+        query: str,
+        conversation_id: uuid.UUID | None = None,
+    ):
+        """Run the full pipeline and yield SSE-formatted strings. Final yield is the done event."""
+        t0 = time.monotonic()
+
+        # 1. Daily limit
+        today_count = await self._msg_repo.count_today(user_id)
+        if today_count >= MAX_CHAT_MESSAGES_PER_DAY:
+            yield StreamErrorEvent(
+                detail=f"Daily limit of {MAX_CHAT_MESSAGES_PER_DAY} messages reached — resets at midnight UTC"
+            ).model_dump_json()
+            return
+
+        # 2. Get or create conversation
+        if conversation_id is not None:
+            conv = await self._conv_repo.get(conversation_id, kb_id, user_id)
+            if conv is None:
+                yield StreamErrorEvent(detail=f"Conversation {conversation_id} not found").model_dump_json()
+                return
+        else:
+            conv = await self._conv_repo.create(kb_id, user_id)
+
+        # 3. Load summary + last 5 messages
+        summary = conv.summary
+        history = await self._msg_repo.get_last_n(conv.id, 5)
+
+        # 4. Rewrite query if follow-up
+        rewritten_query = query
+        rewrite_cost = 0.0
+        if history:
+            rewritten_query, rewrite_cost = await self._groq.rewrite_query(
+                query, history, summary=summary
+            )
+
+        # 5. Embed query
+        [query_vector] = await self._embedder.embed([rewritten_query])
+
+        # 6. Parallel retrieval
+        dense_chunks, bm25_chunks = await asyncio.gather(
+            asyncio.to_thread(
+                self._pinecone.query,
+                kb_id=kb_id,
+                user_id=user_id,
+                vector=query_vector,
+                top_k=20,
+            ),
+            self._bm25.query(kb_id=kb_id, query=rewritten_query, top_k=20),
+        )
+
+        # 7. RRF fusion
+        fused = rrf_merge(dense_chunks, bm25_chunks, k=60, top_n=20)
+
+        if not fused:
+            answer = "I don't have enough information in the provided sources to answer that."
+            citations: list[CitationItem] = []
+            gen_cost = 0.0
+        else:
+            # 8. Cohere rerank
+            try:
+                top_chunks = await self._reranker.rerank(rewritten_query, fused, top_n=5)
+            except BudgetExceeded:
+                logger.warning("Cohere budget exceeded — using top-5 RRF results")
+                top_chunks = fused[:5]
+
+            # 9. Stream generation — collect full answer while yielding tokens
+            answer_parts: list[str] = []
+            gen_cost = 0.0
+            async for token, cost in self._groq.generate_stream(
+                query=rewritten_query,
+                chunks=top_chunks,
+                history=history,
+                summary=summary,
+            ):
+                if token is None:
+                    gen_cost = cost
+                else:
+                    answer_parts.append(token)
+                    yield StreamTokenEvent(content=token).model_dump_json()
+
+            answer = "".join(answer_parts)
+            citations = parse_citations(answer, top_chunks)
+
+        total_cost = rewrite_cost + gen_cost
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        # 10. Persist messages
+        await self._msg_repo.create(conv.id, "user", query)
+        await self._msg_repo.create(
+            conv.id,
+            "assistant",
+            answer,
+            citations=[c.model_dump() for c in citations],
+            latency_ms=latency_ms,
+            cost_usd=total_cost,
+        )
+
+        # 11. Lazily update summary
+        total_count = await self._msg_repo.count_by_conversation(conv.id)
+        if total_count > _SUMMARY_THRESHOLD:
+            await self._update_summary(conv.id, conv.summary)
+
+        yield StreamDoneEvent(
+            conversation_id=conv.id,
+            citations=citations,
+            latency_ms=latency_ms,
+            cost_usd=total_cost,
+        ).model_dump_json()
 
     async def _update_summary(
         self, conversation_id: uuid.UUID, existing_summary: str | None

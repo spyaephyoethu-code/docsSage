@@ -1,6 +1,6 @@
 # DocsSage — Progress Log
 
-## Last updated: 2026-05-02 (Phase 3 improvements)
+## Last updated: 2026-05-09 (Phase 4 done)
 
 ---
 
@@ -160,6 +160,29 @@ curl -X POST http://localhost:8000/api/v1/knowledge-bases/{kb_id}/chat \
 | Word | `notes.docx` | `null` |
 | Text | `readme.txt` | `null` |
 | Web | `null` | full crawled URL |
+
+---
+
+---
+
+## Phase 4 — SSE Streaming (COMPLETED)
+
+### What was done
+- **`groq_client.generate_stream()`** (`infrastructure/llm/groq_client.py`): httpx streaming request with `"stream": True` + `"stream_options": {"include_usage": True}`; parses SSE lines from Groq, yields `(token, 0.0)` per chunk and `(None, cost)` as the final item when usage arrives
+- **`chat_service.chat_stream()`** (`domain/services/chat_service.py`): runs the identical pipeline as `chat()` (limit check → conversation → history → rewrite → embed → retrieve → RRF → rerank), then calls `generate_stream()` — yields `StreamTokenEvent` JSON strings while collecting the full answer, then persists messages and yields a final `StreamDoneEvent`
+- **SSE event schema** (`domain/schemas/chat.py`): three event types added:
+  - `StreamTokenEvent` — `{"type": "token", "content": "..."}` — one per streamed token
+  - `StreamDoneEvent` — `{"type": "done", "conversation_id": "...", "citations": [...], "latency_ms": ..., "cost_usd": ...}` — sent once after persistence
+  - `StreamErrorEvent` — `{"type": "error", "detail": "..."}` — daily limit or not-found errors
+- **`POST /api/v1/knowledge-bases/{kb_id}/chat/stream`** (`api/routers/chat.py` + `api/controllers/chat_controller.py`): returns `StreamingResponse(media_type="text/event-stream")`; wraps the async generator from `chat_stream()` into `data: <json>\n\n` SSE frames
+
+### Test via curl
+```bash
+curl -N -X POST http://localhost:8000/api/v1/knowledge-bases/{kb_id}/chat/stream \
+  -H "Authorization: Bearer <JWT>" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "How does authentication work?"}'
+```
 
 ---
 

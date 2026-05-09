@@ -1,6 +1,8 @@
+import json
 import uuid
 
 from fastapi import Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 # runtime imports
 from app.core.dependencies import get_chat_service
@@ -47,6 +49,24 @@ async def chat(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
     except KBNotFound as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+async def chat_stream(
+    kb_id: uuid.UUID,
+    request: ChatRequest,
+    current_user: CurrentUser,
+    service: ChatService = Depends(get_chat_service),
+) -> StreamingResponse:
+    async def event_generator():
+        async for payload in service.chat_stream(
+            kb_id=kb_id,
+            user_id=current_user.id,
+            query=request.query,
+            conversation_id=request.conversation_id,
+        ):
+            yield f"data: {payload}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 async def list_conversations(

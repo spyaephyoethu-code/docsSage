@@ -7,6 +7,7 @@ from app.domain.schemas.chat import ChatResponse, ConversationResponse, MessageR
 router = APIRouter(prefix="/api/v1/knowledge-bases", tags=["chat"])
 
 router.post("/{kb_id}/chat", response_model=ChatResponse)(chat_controller.chat)
+router.post("/{kb_id}/chat/stream")(chat_controller.chat_stream)
 router.get("/{kb_id}/conversations", response_model=list[ConversationResponse])(
     chat_controller.list_conversations
 )

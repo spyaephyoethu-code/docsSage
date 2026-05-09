@@ -1,3 +1,4 @@
+import json
 import logging
 
 import httpx
@@ -140,6 +141,72 @@ class GroqClient:
             f"Groq generation: {usage.get('total_tokens', '?')} tokens, ${cost:.6f}"
         )
         return answer, cost
+
+    async def generate_stream(
+        self,
+        query: str,
+        chunks: list[RetrievedChunk],
+        history: list[Message],
+        *,
+        summary: str | None = None,
+    ):
+        """Yield (token: str) while streaming, then yield (None, cost: float) as the final item."""
+        context_blocks = "\n\n".join(
+            f"[{i}] {chunk.chunk_text}" for i, chunk in enumerate(chunks, start=1)
+        )
+        history_text = ""
+        if summary:
+            history_text += f"\nConversation summary:\n{summary}\n"
+        if history:
+            turns = "\n".join(f"{m.role.capitalize()}: {m.content}" for m in history)
+            history_text += f"\nRecent messages:\n{turns}\n"
+
+        messages_payload = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a documentation assistant. Answer questions using ONLY the provided context passages.\n"
+                    "- Add inline citations like [1], [2], etc. every time you use information from a passage.\n"
+                    "- You may combine multiple passages; cite all relevant sources.\n"
+                    "- If the context does not contain enough information, say: "
+                    '"I don\'t have enough information in the provided sources to answer that."\n'
+                    "- Be concise and factual."
+                ),
+            },
+            {
+                "role": "user",
+                "content": f"Context:\n{context_blocks}\n{history_text}\nQuestion: {query}",
+            },
+        ]
+        payload = {
+            "model": _GEN_MODEL,
+            "messages": messages_payload,
+            "max_tokens": _MAX_TOKENS,
+            "temperature": 0.1,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        async with httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST", _BASE_URL, headers=self._headers, json=payload
+            ) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    raw = line[len("data: "):]
+                    if raw == "[DONE]":
+                        break
+                    data = json.loads(raw)
+                    # final chunk carries usage
+                    if data.get("usage"):
+                        usage = data["usage"]
+                        cost = _cost(usage, _GEN_INPUT_COST, _GEN_OUTPUT_COST)
+                        yield None, cost
+                        continue
+                    delta = data["choices"][0]["delta"].get("content", "")
+                    if delta:
+                        yield delta, 0.0
 
     async def _call(self, model: str, messages: list[dict], max_tokens: int) -> dict:
         payload = {

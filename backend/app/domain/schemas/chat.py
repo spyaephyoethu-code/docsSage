@@ -37,3 +37,21 @@ class MessageResponse(BaseModel):
     content: str
     citations: list[CitationItem] | None
     created_at: str
+
+
+class StreamTokenEvent(BaseModel):
+    type: str = "token"
+    content: str
+
+
+class StreamDoneEvent(BaseModel):
+    type: str = "done"
+    conversation_id: uuid.UUID
+    citations: list[CitationItem]
+    latency_ms: int
+    cost_usd: float
+
+
+class StreamErrorEvent(BaseModel):
+    type: str = "error"
+    detail: str
